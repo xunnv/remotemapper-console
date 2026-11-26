@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RemoteMapper 控制台</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --card: #141a24;
+    --border: #232c3a;
+    --text: #e6edf6;
+    --muted: #8b98ab;
+    --green: #34d399;
+    --red: #f87171;
+    --orange: #fbbf24;
+    --cyan: #22d3ee;
+    --blue: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: var(--bg); color: var(--text);
+    font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px; margin-bottom: 16px;
+  }
+
+  /* 状态横幅 */
+  #banner { display: flex; align-items: flex-start; gap: 14px; }
+  #dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #4b5563; margin-top: 6px; flex-shrink: 0;
+    transition: background .3s;
+  }
+  #dot.ok { background: var(--green); box-shadow: 0 0 12px rgba(52,211,153,.6); }
+  #dot.warn { background: var(--orange); box-shadow: 0 0 12px rgba(251,191,36,.5); }
+  #dot.bad { background: var(--red); box-shadow: 0 0 12px rgba(248,113,113,.5); }
+  #bigState { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  #detail { color: var(--muted); font-size: 13.5px; line-height: 1.7; white-space: pre-line; }
+
+  /* 按钮 */
+  .btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  button {
+    background: #1d2634; color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 12px; font-size: 14.5px; font-family: inherit;
+    cursor: pointer; transition: all .15s;
+  }
+  button:hover:not(:disabled) { background: #26313f; border-color: #3a4757; }
+  button:active:not(:disabled) { transform: scale(.98); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary {
+    background: linear-gradient(135deg, #0e7490, #155e75);
+    border-color: #0891b2; font-weight: 600;
+  }
+  button.primary:hover:not(:disabled) { background: linear-gradient(135deg, #0891b2, #0e7490); }
+  button.danger { border-color: rgba(248,113,113,.4); color: #fca5a5; }
+  button.danger:hover:not(:disabled) { background: rgba(248,113,113,.12); }
+
+  /* 日志输出 */
+  #out {
+    background: #080b11; border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; height: 260px; overflow-y: auto;
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+    line-height: 1.6; color: #9fb0c4; white-space: pre-wrap; word-break: break-all;
+  }
+  #out .cmd { color: var(--cyan); }
+  #out .ok { color: var(--green); }
+  #out .err { color: var(--red); }
+  #out .sys { color: #6b7a8f; font-style: italic; }
+
+  /* 改 WiFi 弹层 */
+  #modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  #modal.show { display: flex; }
+  .modal-box {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 26px; width: 440px; max-width: 92vw;
+  }
+  .modal-box h3 { margin: 0 0 20px; font-size: 17px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 7px; }
+  .field input, .field select {
+    width: 100%; background: #0b0f17; border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 13px; color: var(--text);
+    font-size: 14px; font-family: inherit; outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--cyan); }
+  .hint { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-bottom: 18px; }
+  .hint.warn { color: #fca5a5; }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-btns button { padding: 10px 22px; font-size: 14px; }
+
+  /* 提示条 */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: #1d2634; border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 24px; font-size: 14px; opacity: 0; transition: all .25s;
+    pointer-events: none; z-index: 200;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.ok { border-color: rgba(52,211,153,.5); color: var(--green); }
+  #toast.err { border-color: rgba(248,113,113,.5); color: var(--red); }
+
+  .wifi-list { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+  .wifi-chip {
+    background: #1d2634; border: 1px solid var(--border); border-radius: 7px;
+    padding: 6px 12px; font-size: 12.5px; cursor: pointer; color: var(--text);
+    font-family: inherit;
+  }
+  .wifi-chip:hover { background: #26313f; border-color: var(--cyan); }
+  .wifi-chip .rssi { color: var(--muted); font-size: 11.5px; margin-left: 5px; }
+
+  .section-title { font-size: 13px; color: var(--muted); margin-bottom: 9px; letter-spacing: .5px; }
+  .cmd-row { display: flex; gap: 8px; }
+  .cmd-row input {
+    flex: 1; background: #0b0f17; border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 13px; color: var(--text);
+    font-size: 14px; font-family: Consolas, monospace; outline: none;
+  }
+  .cmd-row input:focus { border-color: var(--cyan); }
+  .cmd-row button { padding: 11px 22px; }
+
+  /* 当前选中项的样式 */
+  button.active {
+    background: linear-gradient(135deg, #0e7490, #155e75);
+    border-color: #22d3ee;
+    color: #e6faff;
+    font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(34,211,238,.45), 0 0 14px rgba(34,211,238,.22);
+    position: relative;
+  }
+  button.active::after {
+    content: "✓ 当前";
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #a5f3fc;
+    margin-top: 3px;
+    letter-spacing: .5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RemoteMapper 控制台</h1>
+  <div class="sub">插好 USB 线，点下面按钮即可。不需要装任何软件。</div>
+
+  <div class="card" id="banner">
+    <div id="dot"></div>
+    <div style="flex:1">
+      <div id="bigState">未连接</div>
+      <div id="detail">点「连接设备」，在弹出的窗口里选 RemoteMapper，然后点「连接」。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="btns">
+      <button id="btnConnect" class="primary">连接设备</button>
+      <button id="btnRefresh" disabled>刷新状态</button>
+      <button id="btnSetWifi" disabled>改 WiFi</button>
+      <button id="btnLog" disabled>看设备日志</button>
+      <button id="btnRescue" class="danger" disabled>救急：重启 WiFi</button>
+      <button id="btnMore" disabled>更多 ▾</button>
+    </div>
+  </div>
+
+  <div class="card" id="morePanel" style="display:none">
+    <div class="section-title">蓝牙</div>
+    <div class="btns">
+      <button id="btnReconnect" disabled>重新连接遥控器</button>
+      <button id="btnResetKeys" class="danger" disabled>恢复默认键位</button>
+    </div>
+    <div class="section-title" style="margin-top:18px">WiFi 无线电</div>
+    <div class="btns">
+      <button id="btnPolOn" disabled>WiFi 开启（推荐）</button>
+      <button id="btnPolOff" class="danger" disabled>彻底关闭</button>
+    </div>
+    <div class="hint" style="margin-top:9px">管的是整块 WiFi 无线电（连路由器和开热点共用同一个射频）。关掉之后网页打不开，只能用这个串口页面再打开。</div>
+    <div class="section-title" style="margin-top:18px">设备</div>
+    <div class="btns">
+      <button id="btnReboot" class="danger" disabled>重启设备</button>
+    </div>
+    <div class="hint" style="margin-top:9px">相当于拔插一次 USB。重启约 10 秒，之后点「连接设备」重新连上即可。</div>
+    <div class="section-title" style="margin-top:18px">手动发命令（高级）</div>
+    <div class="cmd-row">
+      <input type="text" id="inCmd" placeholder="例如：status、wifi status、log status、help" disabled>
+      <button id="btnSendCmd" class="primary" disabled>发送</button>
+    </div>
+    <div class="hint" style="margin-top:10px">可用命令：status / reconnect / reset_keys / wifi scan / wifi set / wifi policy / wifi status / log on / log off / log status / help</div>
+  </div>
+
+  <div class="card">
+    <div id="out"></div>
+  </div>
+</div>
+
+<div id="modal">
+  <div class="modal-box">
+    <h3>改 WiFi</h3>
+    <div class="field">
+      <label>附近的 WiFi（点一下直接选中）</label>
+      <div class="wifi-list" id="wifiList"><span style="color:var(--muted);font-size:13px">正在扫描…</span></div>
+    </div>
+    <div class="field">
+      <label>WiFi 名称</label>
+      <input type="text" id="inSsid" placeholder="WiFi 名称">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" id="inPass" placeholder="WiFi 密码">
+    </div>
+    <div class="hint">点「保存」后设备会重启，约 30 秒自动连回来。</div>
+    <div class="hint warn">只填名称不填密码 = 连开放网络，会把原来的密码清掉。</div>
+    <div class="modal-btns">
+      <button id="btnCancelWifi">取消</button>
+      <button id="btnSaveWifi" class="primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  const VID = 0x303A, PID = 0x8089;
+
+  let port = null;
+  let writer = null;
+  let reader = null;
+  let readLoopActive = false;
+  let rxBuffer = '';
+  let logMode = false;
+
+  const $ = id => document.getElementById(id);
+  const out = $('out');
+
+  function log(text, cls) {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = text + '\n';
+    out.appendChild(span);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function toast(msg, kind) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'show ' + (kind || '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = ''; }, 3000);
+  }
+
+  function setState(state, big, detail) {
+    const dot = $('dot');
+    dot.className = state;
+    $('bigState').textContent = big;
+    $('detail').textContent = detail || '';
+  }
+
+  const ADVANCED_IDS = [
+    'btnMore', 'btnReconnect', 'btnResetKeys',
+    'btnPolOn', 'btnPolOff', 'btnReboot',
+    'inCmd', 'btnSendCmd'
+  ];
+
+  function setButtons(connected) {
+    $('btnRefresh').disabled = !connected;
+    $('btnSetWifi').disabled = !connected;
+    $('btnLog').disabled = !connected;
+    $('btnRescue').disabled = !connected;
+    ADVANCED_IDS.forEach(id => { const el = $(id); if (el) el.disabled = !connected; });
+    $('btnConnect').textContent = connected ? '断开' : '连接设备';
+    if (!connected) {
+      $('morePanel').style.display = 'none';
+      $('btnMore').textContent = '更多 ▾';
+      clearSelection();
+    }
+  }
+
+  function clearSelection() {
+    ['btnPolOn', 'btnPolOff', 'btnLog'].forEach(id => $(id) && $(id).classList.remove('active'));
+  }
+
+  // 把设备当前的真实状态标到按钮上
+  function applySelection(policyStr, logEnabled) {
+    $('btnPolOn').classList.toggle('active', policyStr === 'always_on' || policyStr === 'on_demand');
+    $('btnPolOff').classList.toggle('active', policyStr === 'disabled');
+    $('btnLog').classList.toggle('active', !!logEnabled);
+    if (logEnabled && !logMode) {
+      logMode = true;
+      $('btnLog').textContent = '停日志';
+    } else if (!logEnabled && logMode) {
+      logMode = false;
+      $('btnLog').textContent = '看设备日志';
+    }
+  }
+
+  // ---------- 串口读写 ----------
+  async function connect() {
+    if (!('serial' in navigator)) {
+      toast('这个浏览器不支持。请用 Chrome 或 Edge 打开本页。', 'err');
+      setState('bad', '浏览器不支持', '请改用 Chrome 或 Edge 打开这个页面。');
+      return;
+    }
+    try {
+      port = await navigator.serial.requestPort({
+        filters: [{ usbVendorId: VID, usbProductId: PID }]
+      });
+    } catch (e) {
+      if (e.name !== 'NotFoundError') {
+        log('选择设备失败：' + e.message, 'err');
+      }
+      return;
+    }
+
+    try {
+      await port.open({ baudRate: 115200 });
+    } catch (e) {
+      log('打开串口失败：' + e.message + '\n如果提示占用，关掉别的串口程序再试。', 'err');
+      toast('打不开串口', 'err');
+      return;
+    }
+
+    writer = port.writable.getWriter();
+    startReadLoop();
+    setButtons(true);
+    log('设备已连接。', 'sys');
+    await sleep(400);
+    await refreshStatus();
+  }
+
+  async function disconnect() {
+    logMode = false;
+    $('btnLog').textContent = '看设备日志';
+    stopReadLoop();
+    try { if (writer) { writer.releaseLock(); writer = null; } } catch (e) {}
+    try { if (port) { await port.close(); port = null; } } catch (e) {}
+    setButtons(false);
+    setState('', '未连接', '点「连接设备」重新连。');
+    log('已断开。', 'sys');
+  }
+
+  async function startReadLoop() {
+    readLoopActive = true;
+    const decoder = new TextDecoder();
+    while (readLoopActive && port && port.readable) {
+      try {
+        reader = port.readable.getReader();
+        while (readLoopActive) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            const text = decoder.decode(value, { stream: true });
+            rxBuffer += text;
+            if (logMode) log(text.replace(/\r/g, ''));
+          }
+        }
+      } catch (e) {
+        if (readLoopActive) log('读取中断：' + e.message, 'err');
+      } finally {
+        try { if (reader) { reader.releaseLock(); reader = null; } } catch (e) {}
+      }
+      if (!readLoopActive) break;
+      await sleep(100);
+    }
+  }
+
+  function stopReadLoop() { readLoopActive = false; }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function send(cmd, waitMs) {
+    if (!writer) { toast('还没连接设备', 'err'); return ''; }
+    rxBuffer = '';
+    log('> ' + cmd, 'cmd');
+    await writer.write(new TextEncoder().encode(cmd + '\r\n'));
+    await sleep(waitMs || 1800);
+    const resp = rxBuffer;
+    const cleaned = resp.replace(/\r/g, '').trim();
+    if (cleaned && !logMode) log(cleaned);
+    return cleaned;
+  }
+
+  function pickJson(text) {
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const t = line.trim();
+      if (t.startsWith('{')) {
+        try { return JSON.parse(t); } catch (e) {}
+      }
+    }
+    return null;
+  }
+
+  // ---------- 业务动作 ----------
+  async function refreshStatus() {
+    if (!writer) return;
+    const stRaw = await send('status', 1400);
+    const st = pickJson(stRaw);
+    const wfRaw = await send('wifi status', 1400);
+    const wf = pickJson(wfRaw);
+    const polRaw = await send('wifi policy', 1200);
+    const pol = pickJson(polRaw);
+    const lgRaw = await send('log status', 1000);
+    const lg = pickJson(lgRaw);
+
+    if (!st) {
+      setState('bad', '设备没响应', '串口开着但没回话。拔插一下 USB 再点「连接设备」。');
+      return;
+    }
+
+    applySelection(pol ? pol.policy_str : null, lg ? lg.cdc_log_enabled : false);
+
+    const bleOk = st.ble_state >= 2;
+    let wifiLine = '';
+    if (wf) {
+      if (wf.sta_connected) {
+        wifiLine = 'WiFi 正常：' + wf.sta_ip;
+      } else if (wf.ap_running) {
+        wifiLine = 'WiFi 没连上，热点已开：RemoteMapper-AP（192.168.4.1）';
+      } else {
+        wifiLine = 'WiFi 没连上，热点也没开 → 点「救急：重启 WiFi」';
+      }
+    }
+    const mins = Math.floor((st.uptime_sec || 0) / 60);
+    const polText = pol ? (pol.policy_str === 'disabled' ? '已关闭' : '开启') : '未知';
+    setState(bleOk ? 'ok' : 'warn',
+      '设备正常 · ' + (bleOk ? '遥控器已连接' : '遥控器未连接'),
+      wifiLine + '\n固件 ' + st.version + '　运行 ' + mins + ' 分钟　可用内存 ' + st.free_heap + ' 字节　WiFi 策略：' + polText);
+  }
+
+  async function scanWifi() {
+    const raw = await send('wifi scan', 6000);
+    const res = pickJson(raw);
+    if (!res || !res.networks || res.networks.length === 0) {
+      $('wifiList').innerHTML = '<span style="color:var(--muted);font-size:13px">没扫到 WiFi</span>';
+      return [];
+    }
+    const box = $('wifiList');
+    box.innerHTML = '';
+    res.networks.forEach(n => {
+      const b = document.createElement('button');
+      b.className = 'wifi-chip';
+      b.innerHTML = escapeHtml(n.ssid) + '<span class="rssi">' + n.rssi + 'dBm</span>';
+      b.onclick = () => { $('inSsid').value = n.ssid; $('inPass').focus(); };
+      box.appendChild(b);
+    });
+    return res.networks;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- 事件绑定 ----------
+  $('btnConnect').onclick = () => {
+    if (port) disconnect(); else connect();
+  };
+
+  $('btnRefresh').onclick = refreshStatus;
+
+  $('btnSetWifi').onclick = async () => {
+    $('modal').classList.add('show');
+    $('inSsid').value = '';
+    $('inPass').value = '';
+    $('wifiList').innerHTML = '<span style="color:var(--muted);font-size:13px">正在扫描…</span>';
+    await scanWifi();
+  };
+
+  $('btnCancelWifi').onclick = () => $('modal').classList.remove('show');
+
+  $('btnSaveWifi').onclick = async () => {
+    const ssid = $('inSsid').value.trim();
+    const pass = $('inPass').value;
+    if (!ssid) { toast('请填写 WiFi 名称', 'err'); return; }
+    if (pass && pass.length < 8) { toast('密码至少 8 位', 'err'); return; }
+
+    $('modal').classList.remove('show');
+    const q = /\s/.test(ssid) ? '"' + ssid + '"' : ssid;
+    const cmd = pass ? 'wifi set ' + q + ' ' + pass : 'wifi set ' + q;
+    await send(cmd, 3000);
+
+    setState('warn', '已保存，设备正在重启…', '约 30 秒后自动恢复，这个页面不用关。');
+    await disconnect();
+    for (let i = 0; i < 20; i++) {
+      await sleep(2000);
+      try {
+        const ports = await navigator.serial.getPorts();
+        if (ports.length > 0) {
+          port = ports[0];
+          await port.open({ baudRate: 115200 });
+          writer = port.writable.getWriter();
+          startReadLoop();
+          setButtons(true);
+          await sleep(600);
+          await refreshStatus();
+          return;
+        }
+      } catch (e) { /* 设备还没起来，继续等 */ }
+    }
+    setState('warn', '设备没自动回来', '点「连接设备」手动重连。');
+  };
+
+  $('btnLog').onclick = async () => {
+    if (!logMode) {
+      logMode = true;
+      $('btnLog').textContent = '停日志';
+      $('btnLog').classList.add('active');
+      log('已打开设备日志，新内容会实时出现在这里。再点一次就停。', 'sys');
+      await send('log on', 1000);
+    } else {
+      logMode = false;
+      $('btnLog').textContent = '看设备日志';
+      $('btnLog').classList.remove('active');
+      await send('log off', 1000);
+      log('已停止日志。', 'sys');
+    }
+  };
+
+  $('btnRescue').onclick = async () => {
+    if (!confirm('确定要重启设备的 WiFi 吗？\n\n设备会断网约 30 秒，然后自己恢复。')) return;
+    log('正在重启 WiFi…', 'sys');
+    await send('wifi off', 2500);
+    await disconnect();
+    await sleep(6000);
+    for (let i = 0; i < 15; i++) {
+      try {
+        const ports = await navigator.serial.getPorts();
+        if (ports.length > 0) {
+          port = ports[0];
+          await port.open({ baudRate: 115200 });
+          writer = port.writable.getWriter();
+          startReadLoop();
+          setButtons(true);
+          await sleep(900);
+          await send('wifi on', 1500);
+          await sleep(7000);
+          await refreshStatus();
+          return;
+        }
+      } catch (e) {}
+      await sleep(2000);
+    }
+    setState('warn', '设备没自动回来', '点「连接设备」手动重连。');
+  };
+
+  // ---------- 更多（高级命令） ----------
+  $('btnMore').onclick = () => {
+    const open = $('morePanel').style.display !== 'none';
+    $('morePanel').style.display = open ? 'none' : 'block';
+    $('btnMore').textContent = open ? '更多 ▾' : '收起 ▴';
+  };
+
+  $('btnReconnect').onclick = async () => {
+    await send('reconnect', 1200);
+    toast('已让设备重新扫描遥控器', 'ok');
+  };
+
+  $('btnResetKeys').onclick = async () => {
+    if (!confirm('确定把按键配置恢复成出厂默认吗？\n\n你自己改过的按键映射会全部丢失。')) return;
+    await send('reset_keys', 1500);
+    toast('键位已恢复默认', 'ok');
+  };
+
+  $('btnReboot').onclick = async () => {
+    if (!confirm('确定要重启设备吗？\n\n重启约 10 秒，之后点「连接设备」重新连上。')) return;
+    log('正在重启设备…', 'sys');
+    try {
+      await writer.write(new TextEncoder().encode('reboot\r\n'));
+    } catch (e) {}
+    await sleep(400);
+    await disconnect();
+    setState('warn', '设备正在重启…', '约 10 秒后自动重连，这个页面不用关。');
+    for (let i = 0; i < 12; i++) {
+      await sleep(2000);
+      try {
+        const ports = await navigator.serial.getPorts();
+        if (ports.length > 0) {
+          port = ports[0];
+          await port.open({ baudRate: 115200 });
+          writer = port.writable.getWriter();
+          startReadLoop();
+          setButtons(true);
+          await sleep(900);
+          await refreshStatus();
+          toast('设备已重启并重新连上', 'ok');
+          return;
+        }
+      } catch (e) {}
+    }
+    setState('warn', '设备没自动回来', '点「连接设备」手动重连。');
+  };
+
+  async function setPolicy(cmd, value) {
+    await send(cmd, 1500);
+    applySelection(value, $('btnLog').classList.contains('active'));
+    toast('WiFi 已设为：' + (value === 'disabled' ? '彻底关闭' : '开启') + '（重启后生效）', 'ok');
+  }
+  $('btnPolOn').onclick = () => setPolicy('wifi policy on_demand', 'on_demand');
+  $('btnPolOff').onclick = () => {
+    if (!confirm('确定要彻底关闭 WiFi 吗？\n\n关闭后网页就打不开了，只能靠这个串口页面再打开。')) return;
+    setPolicy('wifi policy disabled', 'disabled');
+  };
+
+  $('btnSendCmd').onclick = async () => {
+    const cmd = $('inCmd').value.trim();
+    if (!cmd) return;
+    const raw = await send(cmd, 1800);
+    if (!raw) log('（无回显）', 'sys');
+    $('inCmd').value = '';
+  };
+  $('inCmd').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('btnSendCmd').click(); }
+  });
+
+  // 页面载入时自检
+  window.addEventListener('load', () => {
+    if (!('serial' in navigator)) {
+      setState('bad', '浏览器不支持', '这个浏览器没有 Web Serial。请用 Chrome 或 Edge 打开本页。');
+      $('btnConnect').disabled = true;
+    } else {
+      log('就绪。点「连接设备」开始。', 'sys');
+    }
+  });
+})();
+</script>
+</body>
+</html>
